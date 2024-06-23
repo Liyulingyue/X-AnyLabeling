@@ -755,7 +755,7 @@ class LabelConverter:
                             label += f" 0 0"
                     f.write(f"{label}\n")
 
-    def custom_to_voc(self, input_file, output_dir):
+    def custom_to_voc(self, input_file, output_dir, with_pp_format=False):
         with open(input_file, "r", encoding="utf-8") as f:
             data = json.load(f)
 
@@ -764,14 +764,20 @@ class LabelConverter:
         image_height = data["imageHeight"]
 
         root = ET.Element("annotation")
-        ET.SubElement(root, "folder").text = osp.dirname(output_dir)
+        if with_pp_format:
+            ET.SubElement(root, "folder").text = "JPEGImages"
+        else:
+            ET.SubElement(root, "folder").text = osp.dirname(output_dir)
         ET.SubElement(root, "filename").text = osp.basename(image_path)
         size = ET.SubElement(root, "size")
         ET.SubElement(size, "width").text = str(image_width)
         ET.SubElement(size, "height").text = str(image_height)
         ET.SubElement(size, "depth").text = "3"
-        source = ET.SubElement(root, "source")
-        ET.SubElement(source, "database").text = "https://github.com/CVHub520/X-AnyLabeling"
+        if not with_pp_format:
+            source = ET.SubElement(root, "source")
+            ET.SubElement(source, "database").text = "https://github.com/CVHub520/X-AnyLabeling"
+        if with_pp_format:
+            ET.SubElement(root, "object_num").text = str(len(data["shapes"]))
         for shape in data["shapes"]:
             label = shape["label"]
             points = shape["points"]
@@ -815,6 +821,8 @@ class LabelConverter:
 
         with open(output_dir, "w", encoding="utf-8") as f:
             f.write(formatted_xml)
+
+        return image_path
 
     def custom_to_coco(self, input_path, output_path):
         coco_data = self.get_coco_data()

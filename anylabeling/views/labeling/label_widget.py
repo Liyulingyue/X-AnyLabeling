@@ -306,6 +306,10 @@ class LabelingWidget(LabelDialog):
             "open",
             self.tr("Open Dir"),
         )
+        opendir_plus = action(
+            self.tr("&Open Dir Plus"),
+            self.open_folder_dialog_plus,
+        )
         open_next_image = action(
             self.tr("&Next Image"),
             self.open_next_image,
@@ -923,6 +927,10 @@ class LabelingWidget(LabelDialog):
             icon="format_yolo",
             tip=self.tr("Export Custom YOLO Pose Annotations"),
         )
+        export_paddle_det_annotation = action(
+            self.tr("&Export Paddle-Detection Annotations"),
+            self.export_paddle_det_annotation,
+        )
         export_voc_annotation = action(
             self.tr("&Export VOC Annotations"),
             self.export_voc_annotation,
@@ -1059,6 +1067,7 @@ class LabelingWidget(LabelDialog):
             export_yolo_obb_annotation=export_yolo_obb_annotation,
             export_yolo_seg_annotation=export_yolo_seg_annotation,
             export_yolo_pose_annotation=export_yolo_pose_annotation,
+            export_paddle_det_annotation=export_paddle_det_annotation,
             export_voc_annotation=export_voc_annotation,
             export_coco_annotation=export_coco_annotation,
             export_dota_annotation=export_dota_annotation,
@@ -1086,6 +1095,7 @@ class LabelingWidget(LabelDialog):
                 open_,
                 openvideo,
                 opendir,
+                opendir_plus,
                 save,
                 save_as,
                 close,
@@ -1170,6 +1180,7 @@ class LabelingWidget(LabelDialog):
                 open_next_image,
                 open_prev_image,
                 opendir,
+                opendir_plus,
                 openvideo,
                 self.menus.recent_files,
                 save,
@@ -1236,6 +1247,8 @@ class LabelingWidget(LabelDialog):
                 export_yolo_obb_annotation,
                 export_yolo_seg_annotation,
                 export_yolo_pose_annotation,
+                None,
+                export_paddle_det_annotation,
                 None,
                 export_voc_annotation,
                 export_coco_annotation,
@@ -3925,6 +3938,57 @@ class LabelingWidget(LabelDialog):
             )
             return
 
+    def export_paddle_det_annotation(self, _value=False, dirpath=None):
+        if not self.may_continue():
+            return
+
+        if not self.filename:
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.tr("Warning"),
+                self.tr("Please load an image folder before proceeding!"),
+                QtWidgets.QMessageBox.Ok,
+            )
+            return
+
+        label_dir_path = osp.dirname(self.filename)
+        if self.output_dir:
+            label_dir_path = self.output_dir
+        save_root = osp.realpath(osp.join(label_dir_path, "..", "LabeledData"))
+        save_path = osp.realpath(osp.join(save_root, "Annotations"))
+        image_save_path = osp.realpath(osp.join(save_root, "JPEGImages"))
+        os.makedirs(save_path, exist_ok=True)
+        os.makedirs(image_save_path, exist_ok=True)
+        converter = LabelConverter()
+        label_file_list = os.listdir(label_dir_path)
+        try:
+            for src_file_name in label_file_list:
+                if not src_file_name.endswith(".json"):
+                    continue
+                dst_file_name = osp.splitext(src_file_name)[0] + ".xml"
+                src_file = osp.join(label_dir_path, src_file_name)
+                dst_file = osp.join(save_path, dst_file_name)
+                image_path = converter.custom_to_voc(src_file, dst_file, with_pp_format=True)
+                image_path = osp.join(label_dir_path, image_path)
+                shutil.copy(image_path, image_save_path)
+            QtWidgets.QMessageBox.information(
+                self,
+                self.tr("Success"),
+                self.tr(
+                    f"Annotation exported successfully!\n"
+                    f"Check the results in: {save_path}."
+                ),
+                QtWidgets.QMessageBox.Ok,
+            )
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(
+                self,
+                self.tr("Error"),
+                self.tr(f"{e}"),
+                QtWidgets.QMessageBox.Ok,
+            )
+            return
+
     def export_voc_annotation(self, _value=False, dirpath=None):
         if not self.may_continue():
             return
@@ -4647,6 +4711,29 @@ class LabelingWidget(LabelDialog):
             self.import_image_folder(target_dir_path)
 
     def open_folder_dialog(self, _value=False, dirpath=None):
+        if not self.may_continue():
+            return
+
+        default_open_dir_path = dirpath if dirpath else "."
+        if self.last_open_dir and osp.exists(self.last_open_dir):
+            default_open_dir_path = self.last_open_dir
+        else:
+            default_open_dir_path = (
+                osp.dirname(self.filename) if self.filename else "."
+            )
+
+        target_dir_path = str(
+            QtWidgets.QFileDialog.getExistingDirectory(
+                self,
+                self.tr("%s - Open Directory") % __appname__,
+                default_open_dir_path,
+                QtWidgets.QFileDialog.ShowDirsOnly
+                | QtWidgets.QFileDialog.DontResolveSymlinks,
+            )
+        )
+        self.import_image_folder(target_dir_path)
+
+    def open_folder_dialog_plus(self, _value=False, dirpath=None):
         if not self.may_continue():
             return
 
