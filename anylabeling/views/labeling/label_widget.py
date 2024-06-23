@@ -3957,20 +3957,50 @@ class LabelingWidget(LabelDialog):
         save_root = osp.realpath(osp.join(label_dir_path, "..", "LabeledData"))
         save_path = osp.realpath(osp.join(save_root, "Annotations"))
         image_save_path = osp.realpath(osp.join(save_root, "JPEGImages"))
+        labels_file = osp.realpath(osp.join(save_root, "labels.txt"))
+        train_file = osp.realpath(osp.join(save_root, "train.txt"))
+        val_file = osp.realpath(osp.join(save_root, "val.txt"))
+        test_file = osp.realpath(osp.join(save_root, "test.txt"))
         os.makedirs(save_path, exist_ok=True)
         os.makedirs(image_save_path, exist_ok=True)
         converter = LabelConverter()
         label_file_list = os.listdir(label_dir_path)
         try:
+            label_list = []
+            file_list = []
             for src_file_name in label_file_list:
                 if not src_file_name.endswith(".json"):
                     continue
                 dst_file_name = osp.splitext(src_file_name)[0] + ".xml"
                 src_file = osp.join(label_dir_path, src_file_name)
                 dst_file = osp.join(save_path, dst_file_name)
-                image_path = converter.custom_to_voc(src_file, dst_file, with_pp_format=True)
+
+                image_path, per_label_list = converter.custom_to_pp_voc(src_file, dst_file)
+
                 image_path = osp.join(label_dir_path, image_path)
                 shutil.copy(image_path, image_save_path)
+                for label in per_label_list:
+                    if label not in label_list:
+                        label_list.append(label)
+
+                imagename = os.path.basename(image_path)
+                xmlname = os.path.basename(dst_file)
+                file_list.append(f"JPEGImages/{imagename} Annotations/{xmlname}")
+
+            with open(labels_file, "w") as f:
+                for label in label_list:
+                    f.write(label + "\n")
+            with open(train_file, "w") as f:
+                for file in file_list:
+                    f.write(file + "\n")
+            with open(val_file, "w") as f:
+                for file in file_list:
+                    f.write(file + "\n")
+            with open(test_file, "w") as f:
+                for file in file_list:
+                    f.write(file + "\n")
+
+
             QtWidgets.QMessageBox.information(
                 self,
                 self.tr("Success"),

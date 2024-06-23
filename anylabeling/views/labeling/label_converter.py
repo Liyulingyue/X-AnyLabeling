@@ -755,6 +755,74 @@ class LabelConverter:
                             label += f" 0 0"
                     f.write(f"{label}\n")
 
+
+    def custom_to_pp_voc(self, input_file, output_dir):
+        with open(input_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        image_path = data["imagePath"]
+        image_width = data["imageWidth"]
+        image_height = data["imageHeight"]
+
+        root = ET.Element("annotation")
+        ET.SubElement(root, "folder").text = "JPEGImages"
+        ET.SubElement(root, "filename").text = osp.basename(image_path)
+        size = ET.SubElement(root, "size")
+        ET.SubElement(size, "width").text = str(image_width)
+        ET.SubElement(size, "height").text = str(image_height)
+        ET.SubElement(size, "depth").text = "3"
+        ET.SubElement(root, "object_num").text = str(len(data["shapes"]))
+        label_list = []
+        for shape in data["shapes"]:
+            label = shape["label"]
+            points = shape["points"]
+            difficult = shape.get("difficult", False)
+
+            if label not in label_list:
+                label_list.append(label)
+
+            object_elem = ET.SubElement(root, "object")
+            ET.SubElement(object_elem, "name").text = label
+            ET.SubElement(object_elem, "pose").text = "Unspecified"
+            ET.SubElement(object_elem, "truncated").text = "0"
+            ET.SubElement(object_elem, "occluded").text = "0"
+            ET.SubElement(object_elem, "difficult").text = str(int(difficult))
+            if shape["shape_type"] == "rectangle":
+                if len(points) == 2:
+                    logger.warning(
+                        "UserWarning: Diagonal vertex mode is deprecated in X-AnyLabeling release v2.2.0 or later.\n"
+                        "Please update your code to accommodate the new four-point mode."
+                    )
+                    points = rectangle_from_diagonal(points)
+                xmin, ymin, xmax, ymax = self.calculate_bounding_box(points)
+                bndbox = ET.SubElement(object_elem, "bndbox")
+                ET.SubElement(bndbox, "xmin").text = str(int(xmin))
+                ET.SubElement(bndbox, "ymin").text = str(int(ymin))
+                ET.SubElement(bndbox, "xmax").text = str(int(xmax))
+                ET.SubElement(bndbox, "ymax").text = str(int(ymax))
+            elif shape["shape_type"] == "polygon":
+                xmin, ymin, xmax, ymax = self.calculate_bounding_box(points)
+                bndbox = ET.SubElement(object_elem, "bndbox")
+                ET.SubElement(bndbox, "xmin").text = str(int(xmin))
+                ET.SubElement(bndbox, "ymin").text = str(int(ymin))
+                ET.SubElement(bndbox, "xmax").text = str(int(xmax))
+                ET.SubElement(bndbox, "ymax").text = str(int(ymax))
+                polygon = ET.SubElement(object_elem, "polygon")
+                for i, point in enumerate(points):
+                    x_tag = ET.SubElement(polygon, f"x{i+1}")
+                    y_tag = ET.SubElement(polygon, f"y{i+1}")
+                    x_tag.text = str(point[0])
+                    y_tag.text = str(point[1])
+
+        xml_string = ET.tostring(root, encoding="utf-8")
+        dom = minidom.parseString(xml_string)
+        formatted_xml = dom.toprettyxml(indent="  ")
+
+        with open(output_dir, "w", encoding="utf-8") as f:
+            f.write(formatted_xml)
+
+        return image_path, label_list
+
     def custom_to_voc(self, input_file, output_dir, with_pp_format=False):
         with open(input_file, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -764,20 +832,14 @@ class LabelConverter:
         image_height = data["imageHeight"]
 
         root = ET.Element("annotation")
-        if with_pp_format:
-            ET.SubElement(root, "folder").text = "JPEGImages"
-        else:
-            ET.SubElement(root, "folder").text = osp.dirname(output_dir)
+        ET.SubElement(root, "folder").text = osp.dirname(output_dir)
         ET.SubElement(root, "filename").text = osp.basename(image_path)
         size = ET.SubElement(root, "size")
         ET.SubElement(size, "width").text = str(image_width)
         ET.SubElement(size, "height").text = str(image_height)
         ET.SubElement(size, "depth").text = "3"
-        if not with_pp_format:
-            source = ET.SubElement(root, "source")
-            ET.SubElement(source, "database").text = "https://github.com/CVHub520/X-AnyLabeling"
-        if with_pp_format:
-            ET.SubElement(root, "object_num").text = str(len(data["shapes"]))
+        source = ET.SubElement(root, "source")
+        ET.SubElement(source, "database").text = "https://github.com/CVHub520/X-AnyLabeling"
         for shape in data["shapes"]:
             label = shape["label"]
             points = shape["points"]
@@ -821,8 +883,6 @@ class LabelConverter:
 
         with open(output_dir, "w", encoding="utf-8") as f:
             f.write(formatted_xml)
-
-        return image_path
 
     def custom_to_coco(self, input_path, output_path):
         coco_data = self.get_coco_data()
